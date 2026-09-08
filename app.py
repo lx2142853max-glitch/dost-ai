@@ -6,7 +6,7 @@ Agar koi API key na ho to offline smart fallback chalta hai.
 import os, re, random, json, time
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
@@ -184,12 +184,142 @@ def health():
                           "gemini": bool(GEMINI_KEY)}}
 
 
-@app.get("/")
+# ---- UI ----
+# Agar static/index.html maujood hai to wahi serve hoga (edit karna easy),
+# warna neeche embedded copy chalegi. Isliye 'static' folder optional hai.
+_STATIC = os.path.join(APP_DIR, "static")
+_INDEX = os.path.join(_STATIC, "index.html")
+
+
+@app.get("/", response_class=HTMLResponse)
 def index():
-    return FileResponse(os.path.join(APP_DIR, "static", "index.html"))
+    if os.path.exists(_INDEX):
+        return HTMLResponse(open(_INDEX, encoding="utf-8").read())
+    return HTMLResponse(INDEX_HTML)
 
 
-app.mount("/static", StaticFiles(directory=os.path.join(APP_DIR, "static")), name="static")
+if os.path.isdir(_STATIC):
+    app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+
+INDEX_HTML = r"""<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<title>Dost AI — Hindi + English Chatbot</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0b1020; --panel:#141a2f; --panel2:#1b2340; --line:#28304f;
+    --txt:#e8ecfa; --mut:#8b95b8; --acc:#6d5efc; --acc2:#22c1a4;
+  }
+  body.light{--bg:#f2f4fb;--panel:#ffffff;--panel2:#eef1fa;--line:#dfe3f0;--txt:#141a2f;--mut:#5c6685}
+  body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,'Noto Sans Devanagari',sans-serif;height:100vh;display:flex;flex-direction:column;transition:.3s}
+  header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0}
+  .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;font-size:20px}
+  h1{font-size:17px;font-weight:600}
+  header small{color:var(--mut);font-size:12px}
+  .sp{flex:1}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:7px 12px;border-radius:10px;cursor:pointer;font-size:13px}
+  .btn:hover{border-color:var(--acc)}
+  #chat{flex:1;overflow-y:auto;padding:20px 14px;display:flex;flex-direction:column;gap:14px}
+  .wrap{max-width:820px;width:100%;margin:0 auto;display:flex;gap:10px}
+  .wrap.me{flex-direction:row-reverse}
+  .av{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:15px;background:var(--panel2);border:1px solid var(--line)}
+  .bub{padding:11px 15px;border-radius:16px;line-height:1.65;font-size:15px;max-width:76%;white-space:pre-wrap;word-wrap:break-word;background:var(--panel);border:1px solid var(--line)}
+  .me .bub{background:linear-gradient(135deg,var(--acc),#8b5cf6);color:#fff;border:none;border-bottom-right-radius:5px}
+  .bot .bub{border-bottom-left-radius:5px}
+  .bub code{background:rgba(127,127,127,.22);padding:2px 5px;border-radius:5px;font-size:13.5px}
+  .bub pre{background:#0a0e1c;color:#d6e2ff;padding:11px;border-radius:10px;overflow-x:auto;margin:8px 0}
+  .bub pre code{background:none;padding:0}
+  .bub strong{font-weight:700}
+  .bub ul,.bub ol{margin:6px 0 6px 20px}
+  .dots span{display:inline-block;width:7px;height:7px;margin:0 2px;border-radius:50%;background:var(--mut);animation:b 1.2s infinite}
+  .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+  @keyframes b{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;max-width:820px;margin:4px auto;width:100%}
+  .chip{background:var(--panel);border:1px solid var(--line);padding:7px 12px;border-radius:20px;font-size:13px;cursor:pointer;color:var(--mut)}
+  .chip:hover{border-color:var(--acc);color:var(--txt)}
+  footer{padding:12px 14px;background:var(--panel);border-top:1px solid var(--line);flex-shrink:0}
+  .ib{max-width:820px;margin:0 auto;display:flex;gap:9px;align-items:flex-end}
+  textarea{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:14px;color:var(--txt);padding:12px 14px;font-size:15px;font-family:inherit;resize:none;max-height:150px;outline:none}
+  textarea:focus{border-color:var(--acc)}
+  .send{width:46px;height:46px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-size:19px;cursor:pointer;flex-shrink:0}
+  .send:disabled{opacity:.45;cursor:not-allowed}
+  .hint{text-align:center;color:var(--mut);font-size:11px;margin-top:7px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🤖</div>
+  <div><h1>Dost AI</h1><small id="st">हिंदी • English • Hinglish</small></div>
+  <div class="sp"></div>
+  <button class="btn" onclick="theme()">🌓</button>
+  <button class="btn" onclick="clr()">🗑️ New</button>
+</header>
+
+<div id="chat"></div>
+
+<footer>
+  <div class="chips" id="chips"></div>
+  <div class="ib">
+    <textarea id="in" rows="1" placeholder="Kuch bhi poochhiye… / कुछ भी पूछिए…"></textarea>
+    <button class="send" id="send" onclick="send()">➤</button>
+  </div>
+  <div class="hint">Enter = भेजें · Shift+Enter = नई लाइन</div>
+</footer>
+
+<script>
+const chat=document.getElementById('chat'), inp=document.getElementById('in'), btn=document.getElementById('send');
+let history=[], busy=false;
+const SUGG=["नमस्ते, आप क्या-क्या कर सकते हैं?","Write an email asking for leave","Mujhe Python seekhna hai, roadmap do","Ek shayari sunao","Explain photosynthesis simply"];
+
+function md(t){
+  t=t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  t=t.replace(/```(\w*)\n?([\s\S]*?)```/g,(m,l,c)=>'<pre><code>'+c.trim()+'</code></pre>');
+  t=t.replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  t=t.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  t=t.replace(/(^|\n)\s*[-*]\s+(.+)/g,'$1• $2');
+  t=t.replace(/_\(([^)]+)\)_/g,'<em style="opacity:.7">($1)</em>');
+  return t;
+}
+function add(role,text){
+  const w=document.createElement('div'); w.className='wrap '+(role==='user'?'me':'bot');
+  w.innerHTML='<div class="av">'+(role==='user'?'🧑':'🤖')+'</div><div class="bub">'+(role==='user'?text.replace(/</g,'&lt;'):md(text))+'</div>';
+  chat.appendChild(w); chat.scrollTop=chat.scrollHeight; return w;
+}
+function chips(){
+  const c=document.getElementById('chips'); c.innerHTML='';
+  SUGG.forEach(s=>{const b=document.createElement('div');b.className='chip';b.textContent=s;b.onclick=()=>{inp.value=s;send();};c.appendChild(b);});
+}
+function hideChips(){document.getElementById('chips').innerHTML='';}
+
+async function send(){
+  const t=inp.value.trim(); if(!t||busy) return;
+  hideChips(); inp.value=''; inp.style.height='auto';
+  add('user',t); history.push({role:'user',content:t});
+  busy=true; btn.disabled=true;
+  const l=add('assistant',''); l.querySelector('.bub').innerHTML='<span class="dots"><span></span><span></span><span></span></span>';
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history})});
+    const d=await r.json();
+    l.querySelector('.bub').innerHTML=md(d.reply);
+    history.push({role:'assistant',content:d.reply});
+    document.getElementById('st').textContent='हिंदी • English • Hinglish · '+(d.provider||'');
+  }catch(e){ l.querySelector('.bub').textContent='⚠️ Network error. Dobara try karein.'; }
+  busy=false; btn.disabled=false; chat.scrollTop=chat.scrollHeight; inp.focus();
+}
+function clr(){history=[];chat.innerHTML='';greet();}
+function theme(){document.body.classList.toggle('light');localStorage.t=document.body.className;}
+function greet(){add('assistant','नमस्ते! 🙏 मैं **Dost AI** हूँ।\n\nMain Hindi, English aur Hinglish — teeno mein baat kar sakta hoon. Padhai, coding, writing, ideas, translation ya bas gappe — kuch bhi poochhiye!');chips();}
+inp.addEventListener('input',()=>{inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,150)+'px';});
+inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+if(localStorage.t)document.body.className=localStorage.t;
+greet(); inp.focus();
+</script>
+</body>
+</html>
+"""
 
 if __name__ == "__main__":
     import uvicorn
